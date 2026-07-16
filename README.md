@@ -4,7 +4,9 @@
 
 它会记录你复制过的纯文本，通过菜单栏或全局快捷键快速搜索并再次复制。当前版本没有账号、云同步、遥测或网络请求。
 
-![MacClipboard 剪贴板历史界面](image.png)
+<p align="center">
+  <img src="image.png" alt="MacClipboard 剪贴板历史界面" width="560">
+</p>
 
 ## 功能
 
