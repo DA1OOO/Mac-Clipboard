@@ -7,7 +7,11 @@ struct MacClipboardApp: App {
 
   var body: some Scene {
     Settings {
-      SettingsView(store: appDelegate.store)
+      SettingsView(
+        store: appDelegate.store,
+        globalHotKey: appDelegate.globalHotKey,
+        focusedInputPaster: appDelegate.focusedInputPaster
+      )
     }
   }
 }
@@ -15,12 +19,18 @@ struct MacClipboardApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   let store = ClipboardStore()
+  let globalHotKey = GlobalHotKey()
+  let focusedInputPaster = FocusedInputPaster()
   private var statusBarController: StatusBarController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
     store.startMonitoring()
-    statusBarController = StatusBarController(store: store)
+    statusBarController = StatusBarController(
+      store: store,
+      globalHotKey: globalHotKey,
+      focusedInputPaster: focusedInputPaster
+    )
   }
 
   func applicationWillTerminate(_ notification: Notification) {

@@ -9,8 +9,8 @@ MacClipboard 是一个轻量、私密、仅在本机运行的 macOS 菜单栏剪
 当前范围：
 
 - 监听并保存系统剪贴板中的纯文本。
-- 使用菜单栏图标或全局快捷键 `⌘⇧V` 打开历史面板。
-- 支持搜索、再次复制、去重、删除、清空和暂停监听。
+- 使用菜单栏图标或可自定义的全局快捷键（默认 `⌘⇧V`）打开历史面板。
+- 支持搜索、再次复制、回车填入原应用输入光标、去重、删除、清空和暂停监听。
 - 历史数据只保存在本机，不包含网络请求或云同步。
 
 除非用户明确要求，不要引入账号、遥测、网络同步或第三方服务。
@@ -19,7 +19,8 @@ MacClipboard 是一个轻量、私密、仅在本机运行的 macOS 菜单栏剪
 
 - Swift Package Manager
 - SwiftUI：列表、搜索和设置 UI
-- AppKit：`NSPasteboard`、`NSStatusItem`、`NSPopover`
+- AppKit：`NSPasteboard`、`NSStatusItem`、非激活 `NSPanel`
+- ApplicationServices/CoreGraphics：辅助功能焦点检测和定向粘贴事件
 - Carbon HIToolbox：全局快捷键
 - 最低系统版本：macOS 13
 - Bundle ID：`com.da1ooo.MacClipboard`
@@ -56,8 +57,9 @@ MacClipboard 是一个轻量、私密、仅在本机运行的 macOS 菜单栏剪
 3. `ClipboardHistoryRules` 负责忽略空文本、将重复项移到首位并应用历史数量上限。
 4. `HistoryPersistence` 将 `[ClipboardItem]` 以 JSON 原子写入本机 Application Support。
 5. `ClipboardHistoryView` 观察 store，负责搜索、选择、删除和再次复制。
-6. `StatusBarController` 使用 `NSStatusItem` 和 `NSPopover` 承载 SwiftUI UI。
-7. `GlobalHotKey` 注册固定快捷键 `⌘⇧V`。
+6. `StatusBarController` 使用 `NSStatusItem` 和非激活 `NSPanel` 承载 SwiftUI UI；打开面板时只 `orderFront`，不得令面板成为 Key Window 或自动聚焦 Search。
+7. `GlobalHotKey` 持久化快捷键设置，并在修改后重新注册全局快捷键。
+8. 面板显示期间使用临时 Carbon 热键接收上下、回车和 Esc；`FocusedInputPaster` 记录原应用，并在回车时校验该应用当前仍有可编辑焦点，再发送 `⌘V`。
 
 保持以下边界：
 
@@ -65,6 +67,7 @@ MacClipboard 是一个轻量、私密、仅在本机运行的 macOS 菜单栏剪
 - 系统剪贴板、文件存储、菜单栏和快捷键逻辑放入 `Services`。
 - View 只负责 UI 状态和调用 store，不直接读写文件或轮询剪贴板。
 - `ClipboardStore` 是主线程对象；更新 `@Published` 状态时保持 `@MainActor`。
+- 辅助功能代码只检查焦点元素是否提供文本选择范围，不读取或记录输入框正文。
 - 动态列表必须使用 `ClipboardItem.id` 作为稳定标识，不使用数组下标作为 ID。
 
 ## 构建与验证
@@ -90,6 +93,8 @@ open dist/MacClipboard.app
 1. 执行 Release 构建。
 2. 将可执行文件和 `Info.plist` 组装到 `dist/MacClipboard.app`。
 3. 使用 ad-hoc 签名，供本机运行。
+
+ad-hoc 签名按当前二进制哈希标识应用；代码变化后，已有辅助功能授权会失效。涉及辅助功能的手动验证必须在最后一次构建后重新授权，或使用稳定的开发者签名身份。
 
 本机 Command Line Tools 若默认 SDK 与 Swift 编译器版本不匹配，脚本会优先使用已存在的 `/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk`。其他机器没有该 SDK 时，脚本会使用系统默认 `SDKROOT`。
 
@@ -118,6 +123,7 @@ git diff --check
 - 不要把真实剪贴板历史复制进测试夹具、日志或提交内容。
 - 不要提交 `.env`、密钥、Token、证书、SSH 文件或开发者本机绝对路径。
 - 不要打印剪贴板正文；错误日志只记录错误描述。
+- 不要通过辅助功能接口读取、记录或持久化其他应用的输入框正文。
 - 新增网络能力前必须获得用户明确同意，并同步更新 README 的隐私说明。
 
 ## Git 与产物约束

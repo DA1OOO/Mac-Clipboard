@@ -3,9 +3,14 @@ import MacClipboardCore
 
 struct HistoryPersistence {
   private let fileManager: FileManager
+  private let customHistoryURL: URL?
 
-  init(fileManager: FileManager = .default) {
+  init(
+    fileManager: FileManager = .default,
+    historyURL: URL? = nil
+  ) {
     self.fileManager = fileManager
+    self.customHistoryURL = historyURL
   }
 
   func load() -> [ClipboardItem] {
@@ -36,6 +41,10 @@ struct HistoryPersistence {
   }
 
   var historyURL: URL {
+    if let customHistoryURL {
+      return customHistoryURL
+    }
+
     let applicationSupport =
       fileManager.urls(
         for: .applicationSupportDirectory,

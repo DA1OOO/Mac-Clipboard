@@ -1,14 +1,37 @@
 import AppKit
+import Carbon.HIToolbox
 import MacClipboardCore
 import SwiftUI
 
 struct ClipboardHistoryView: View {
   @ObservedObject var store: ClipboardStore
+  @ObservedObject var globalHotKey: GlobalHotKey
+  @ObservedObject var focusedInputPaster: FocusedInputPaster
+  let panelCommandRouter: PanelCommandRouter
+  let historyCommandsChanged: (Bool) -> Void
   let dismiss: () -> Void
 
   @State private var searchText = ""
   @State private var page: Page = .history
+  @State private var selectedItemID: UUID?
   @FocusState private var searchIsFocused: Bool
+
+  init(
+    store: ClipboardStore,
+    globalHotKey: GlobalHotKey,
+    focusedInputPaster: FocusedInputPaster,
+    panelCommandRouter: PanelCommandRouter,
+    historyCommandsChanged: @escaping (Bool) -> Void = { _ in },
+    dismiss: @escaping () -> Void
+  ) {
+    self.store = store
+    self.globalHotKey = globalHotKey
+    self.focusedInputPaster = focusedInputPaster
+    self.panelCommandRouter = panelCommandRouter
+    self.historyCommandsChanged = historyCommandsChanged
+    self.dismiss = dismiss
+    _selectedItemID = State(initialValue: store.items.first?.id)
+  }
 
   private enum Page {
     case history
@@ -31,7 +54,11 @@ struct ClipboardHistoryView: View {
       case .history:
         historyContent
       case .settings:
-        SettingsView(store: store)
+        SettingsView(
+          store: store,
+          globalHotKey: globalHotKey,
+          focusedInputPaster: focusedInputPaster
+        )
       }
 
       Divider()
@@ -39,10 +66,35 @@ struct ClipboardHistoryView: View {
     }
     .frame(width: 440, height: 520)
     .background(.regularMaterial)
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     .onAppear {
+      historyCommandsChanged(page == .history)
       if page == .history {
-        searchIsFocused = true
+        selectedItemID = filteredItems.first?.id
       }
+    }
+    .onChange(of: page) { newPage in
+      let historyIsVisible = newPage == .history
+      historyCommandsChanged(historyIsVisible)
+      guard historyIsVisible else { return }
+      selectedItemID = filteredItems.first?.id
+    }
+    .onChange(of: searchText) { _ in
+      selectedItemID = filteredItems.first?.id
+    }
+    .onChange(of: filteredItems.map(\.id)) { itemIDs in
+      if let selectedItemID, itemIDs.contains(selectedItemID) {
+        return
+      }
+      selectedItemID = itemIDs.first
+    }
+    .background(
+      LocalKeyEventMonitor(isEnabled: page == .history) { event in
+        handleHistoryKeyEvent(event)
+      }
+    )
+    .onReceive(panelCommandRouter.commands) { command in
+      handlePanelCommand(command)
     }
   }
 
@@ -51,7 +103,6 @@ struct ClipboardHistoryView: View {
       if page == .settings {
         Button {
           page = .history
-          searchIsFocused = true
         } label: {
           Image(systemName: "chevron.left")
         }
@@ -92,9 +143,7 @@ struct ClipboardHistoryView: View {
           .textFieldStyle(.plain)
           .focused($searchIsFocused)
           .onSubmit {
-            if let first = filteredItems.first {
-              copyAndDismiss(first)
-            }
+            submitSelectedCandidate()
           }
         if !searchText.isEmpty {
           Button {
@@ -115,24 +164,37 @@ struct ClipboardHistoryView: View {
       if filteredItems.isEmpty {
         emptyState
       } else {
-        List {
-          ForEach(filteredItems) { item in
-            ClipboardRow(item: item) {
-              copyAndDismiss(item)
-            }
-            .contextMenu {
-              Button("Copy") {
+        ScrollViewReader { proxy in
+          List {
+            ForEach(filteredItems) { item in
+              ClipboardRow(
+                item: item,
+                isSelected: selectedItemID == item.id
+              ) {
                 copyAndDismiss(item)
               }
-              Divider()
-              Button("Delete", role: .destructive) {
-                store.delete(item)
+              .id(item.id)
+              .contextMenu {
+                Button("Copy") {
+                  copyAndDismiss(item)
+                }
+                Divider()
+                Button("Delete", role: .destructive) {
+                  store.delete(item)
+                }
+              }
+            }
+          }
+          .listStyle(.plain)
+          .environment(\.defaultMinListRowHeight, 48)
+          .onChange(of: selectedItemID) { selectedItemID in
+            if let selectedItemID {
+              withAnimation(.easeOut(duration: 0.1)) {
+                proxy.scrollTo(selectedItemID, anchor: .center)
               }
             }
           }
         }
-        .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 48)
       }
     }
   }
@@ -167,7 +229,7 @@ struct ClipboardHistoryView: View {
 
       Spacer()
 
-      Text("⌘⇧V")
+      Text(globalHotKey.shortcut.displayString)
         .font(.caption.monospaced())
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
@@ -187,10 +249,74 @@ struct ClipboardHistoryView: View {
     store.copy(item)
     dismiss()
   }
+
+  private func moveSelection(_ direction: ClipboardSelectionDirection) {
+    selectedItemID = ClipboardSelectionRules.movingSelection(
+      from: selectedItemID,
+      direction: direction,
+      in: filteredItems
+    )
+  }
+
+  private func submitSelectedCandidate() {
+    let item =
+      selectedItemID.flatMap { selectedItemID in
+        filteredItems.first { $0.id == selectedItemID }
+      } ?? filteredItems.first
+
+    if let item {
+      store.copy(item)
+      dismiss()
+      focusedInputPaster.pasteIntoRememberedInput()
+    }
+  }
+
+  private func handleHistoryKeyEvent(_ event: NSEvent) -> Bool {
+    let navigationModifiers: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
+    guard event.modifierFlags.intersection(navigationModifiers).isEmpty else {
+      return false
+    }
+
+    switch Int(event.keyCode) {
+    case kVK_UpArrow:
+      moveSelection(.previous)
+      return !filteredItems.isEmpty
+    case kVK_DownArrow:
+      moveSelection(.next)
+      return !filteredItems.isEmpty
+    case kVK_Return, kVK_ANSI_KeypadEnter:
+      guard !filteredItems.isEmpty else { return false }
+      submitSelectedCandidate()
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func handlePanelCommand(_ command: PanelCommand) {
+    switch command {
+    case .previous:
+      guard page == .history else { return }
+      moveSelection(.previous)
+    case .next:
+      guard page == .history else { return }
+      moveSelection(.next)
+    case .submit:
+      guard page == .history, !filteredItems.isEmpty else { return }
+      submitSelectedCandidate()
+    case .dismiss:
+      dismiss()
+    case .panelWillOpen:
+      searchIsFocused = false
+    case .panelWillClose:
+      searchIsFocused = false
+    }
+  }
 }
 
 private struct ClipboardRow: View {
   let item: ClipboardItem
+  let isSelected: Bool
   let copy: () -> Void
 
   var body: some View {
@@ -210,7 +336,12 @@ private struct ClipboardRow: View {
         }
       }
       .contentShape(Rectangle())
+      .padding(.horizontal, 6)
       .padding(.vertical, 4)
+      .background(
+        isSelected ? Color.accentColor.opacity(0.16) : Color.clear,
+        in: RoundedRectangle(cornerRadius: 6)
+      )
     }
     .buttonStyle(.plain)
     .accessibilityLabel("Copy \(item.singleLinePreview)")

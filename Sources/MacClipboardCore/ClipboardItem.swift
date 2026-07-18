@@ -42,3 +42,31 @@ public enum ClipboardHistoryRules {
     return Array(updated.prefix(max(1, limit)))
   }
 }
+
+public enum ClipboardSelectionDirection {
+  case previous
+  case next
+}
+
+public enum ClipboardSelectionRules {
+  public static func movingSelection(
+    from selectedID: UUID?,
+    direction: ClipboardSelectionDirection,
+    in items: [ClipboardItem]
+  ) -> UUID? {
+    guard !items.isEmpty else { return nil }
+
+    guard let selectedID,
+      let selectedIndex = items.firstIndex(where: { $0.id == selectedID })
+    else {
+      return direction == .next ? items.first?.id : items.last?.id
+    }
+
+    switch direction {
+    case .previous:
+      return items[max(0, selectedIndex - 1)].id
+    case .next:
+      return items[min(items.count - 1, selectedIndex + 1)].id
+    }
+  }
+}

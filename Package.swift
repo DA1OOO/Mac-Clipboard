@@ -18,6 +18,7 @@ let package = Package(
             dependencies: ["MacClipboardCore"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("ApplicationServices"),
                 .linkedFramework("Carbon")
             ]
         ),
