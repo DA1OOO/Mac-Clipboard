@@ -18,6 +18,7 @@
 - 点击菜单栏剪贴板图标或使用全局快捷键打开历史，默认快捷键为 `⌘⇧V`。
 - 支持在设置中录制自定义全局快捷键，修改后立即生效。
 - 支持点击搜索框筛选、点击复制和上下键切换候选项；面板打开时不会成为 Key Window，也不会移动原输入焦点。
+- 历史记录和收藏夹使用两个 Tab；右键可收藏或取消收藏，左右键可切换 Tab。
 - 打开面板前会记住原应用的可编辑输入光标；按回车复制当前候选项并恢复该光标，然后自动粘贴。
 - 自动去重；重复内容会移动到列表顶部。
 - 支持单条删除、全部清空和暂停监听。
@@ -88,7 +89,7 @@ ClipboardStore
 StatusBarController → NSStatusItem + 不成为 Key Window 的 NSPanel
 GlobalHotKey        → 可持久化、运行时重新注册的全局快捷键
 PanelCommandRouter  → 面板显示期间用临时热键处理上下、回车和 Esc
-FocusedInputPaster  → 回车时校验原应用输入焦点并发送 ⌘V
+FocusedInputPaster  → 回车时等待原应用回到前台并发送一次 ⌘V
 ```
 
 Swift Package 包含三个 target：
@@ -132,6 +133,8 @@ codesign --verify --deep --strict dist/MacClipboard.app
 ```text
 ~/Library/Application Support/MacClipboard/history.json
 ```
+
+收藏夹单独保存在同一目录的 `favorites.json`，清空普通历史不会删除收藏内容。
 
 剪贴板管理器在运行期间能够读取复制的文本。复制密码、Token 等敏感内容前，可以在设置中暂停监听；也可以随时清空历史。
 

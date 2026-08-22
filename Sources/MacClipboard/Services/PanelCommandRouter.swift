@@ -4,6 +4,8 @@ import Foundation
 enum PanelCommand: Equatable {
   case previous
   case next
+  case previousTab
+  case nextTab
   case submit
   case dismiss
   case panelWillOpen

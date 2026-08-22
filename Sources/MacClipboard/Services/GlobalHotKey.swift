@@ -145,6 +145,8 @@ final class GlobalHotKey: ObservableObject {
     case submit = 3
     case keypadSubmit = 4
     case dismiss = 5
+    case previousTab = 6
+    case nextTab = 7
 
     var keyCode: UInt32 {
       switch self {
@@ -152,6 +154,10 @@ final class GlobalHotKey: ObservableObject {
         UInt32(kVK_UpArrow)
       case .next:
         UInt32(kVK_DownArrow)
+      case .previousTab:
+        UInt32(kVK_LeftArrow)
+      case .nextTab:
+        UInt32(kVK_RightArrow)
       case .submit:
         UInt32(kVK_Return)
       case .keypadSubmit:
@@ -167,6 +173,10 @@ final class GlobalHotKey: ObservableObject {
         .previous
       case .next:
         .next
+      case .previousTab:
+        .previousTab
+      case .nextTab:
+        .nextTab
       case .submit, .keypadSubmit:
         .submit
       case .dismiss:

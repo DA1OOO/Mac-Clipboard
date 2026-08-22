@@ -59,7 +59,7 @@ MacClipboard 是一个轻量、私密、仅在本机运行的 macOS 菜单栏剪
 5. `ClipboardHistoryView` 观察 store，负责搜索、选择、删除和再次复制。
 6. `StatusBarController` 使用 `NSStatusItem` 和非激活 `NSPanel` 承载 SwiftUI UI；打开面板时只 `orderFront`，不得令面板成为 Key Window 或自动聚焦 Search。
 7. `GlobalHotKey` 持久化快捷键设置，并在修改后重新注册全局快捷键。
-8. 面板显示期间使用临时 Carbon 热键接收上下、回车和 Esc；`FocusedInputPaster` 记录原应用，并在回车时校验该应用当前仍有可编辑焦点，再发送 `⌘V`。
+8. 面板显示期间使用临时 Carbon 热键接收方向键、回车和 Esc；`FocusedInputPaster` 记录原应用，关闭面板后等待该应用重新成为前台，再发送一次 `⌘V`。
 
 保持以下边界：
 
@@ -67,7 +67,7 @@ MacClipboard 是一个轻量、私密、仅在本机运行的 macOS 菜单栏剪
 - 系统剪贴板、文件存储、菜单栏和快捷键逻辑放入 `Services`。
 - View 只负责 UI 状态和调用 store，不直接读写文件或轮询剪贴板。
 - `ClipboardStore` 是主线程对象；更新 `@Published` 状态时保持 `@MainActor`。
-- 辅助功能代码只检查焦点元素是否提供文本选择范围，不读取或记录输入框正文。
+- 辅助功能代码不得读取或记录其他应用的输入框正文；自动粘贴只允许向打开面板前记录的应用发送一次标准 `⌘V`。
 - 动态列表必须使用 `ClipboardItem.id` 作为稳定标识，不使用数组下标作为 ID。
 
 ## 构建与验证
@@ -109,6 +109,42 @@ git diff --check
 ```
 
 如果改动涉及菜单栏、剪贴板、快捷键或 UI，还需要实际启动应用进行手动验证。
+
+## 拉取更新并替换本地 App
+
+其他机器从 GitHub 拉取新代码后，应先完成最终构建和验证，再替换固定位置的本地 App。不要长期把 `dist/MacClipboard.app` 当作安装版本运行；`dist/` 会在下次构建时被重新生成。
+
+推荐将应用固定安装在 `/Applications/MacClipboard.app`；没有管理员权限时可使用 `~/Applications/MacClipboard.app`。更新前先确认现有安装位置，不要误操作 `.build/`、`dist/` 或其他同名 App：
+
+```bash
+git pull --ff-only
+./Scripts/self-test.sh
+./Scripts/build-app.sh
+plutil -lint Resources/Info.plist
+codesign --verify --deep --strict dist/MacClipboard.app
+
+mdfind 'kMDItemCFBundleIdentifier == "com.da1ooo.MacClipboard"'
+pgrep -fl MacClipboard
+```
+
+Agent 执行替换时遵循以下顺序：
+
+1. 根据 `mdfind` 结果和用户选择确定唯一、明确的安装目标；默认使用 `/Applications/MacClipboard.app`。
+2. 退出正在运行的 `MacClipboard`，并用 `pgrep -fl MacClipboard` 确认旧进程已结束。
+3. 使用 `mktemp -d` 创建独立备份目录，把已有安装包移动到该目录；不要直接递归删除旧 App。
+4. 使用 `/usr/bin/ditto dist/MacClipboard.app <明确的安装目标>` 复制新版本。写入 `/Applications` 或结束 GUI 进程需要权限时，应向用户请求授权，不要绕过系统权限。
+5. 对安装后的目标运行 `codesign --verify --deep --strict <安装目标>`，然后使用 LaunchServices 重新注册并启动：
+
+   ```bash
+   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/MacClipboard.app
+   open /Applications/MacClipboard.app
+   ```
+
+6. 完成菜单栏、快捷键、回车自动粘贴和收藏夹的手动验证后，再告知用户备份目录位置；只有获得用户确认后才删除备份。
+
+应用更新不会删除剪贴板历史或收藏夹，因为数据保存在 `~/Library/Application Support/MacClipboard/`，不在 `.app` 包内。
+
+当前 `build-app.sh` 使用 ad-hoc 签名，二进制变化后 macOS 会把它视为新的辅助功能代码身份。应在最后一次构建和安装完成后，再到“系统设置 → 隐私与安全性 → 辅助功能”删除旧的 MacClipboard 条目、重新添加固定安装位置的 App 并授权。不要在授权后继续重新构建和覆盖，否则还要再次授权。使用稳定的 Apple Development 或 Developer ID 签名可以避免这一问题。
 
 ## 本地数据与隐私
 

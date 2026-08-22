@@ -13,6 +13,7 @@ struct ClipboardHistoryView: View {
 
   @State private var searchText = ""
   @State private var page: Page = .history
+  @State private var activeTab: ClipboardTab = .history
   @State private var selectedItemID: UUID?
   @FocusState private var searchIsFocused: Bool
 
@@ -38,9 +39,43 @@ struct ClipboardHistoryView: View {
     case settings
   }
 
+  private enum ClipboardTab: String, CaseIterable, Identifiable {
+    case history
+    case favorites
+
+    var id: Self { self }
+
+    var title: String {
+      switch self {
+      case .history:
+        "History"
+      case .favorites:
+        "Favorites"
+      }
+    }
+
+    var systemImage: String {
+      switch self {
+      case .history:
+        "clock.arrow.circlepath"
+      case .favorites:
+        "star.fill"
+      }
+    }
+  }
+
+  private var visibleItems: [ClipboardItem] {
+    switch activeTab {
+    case .history:
+      store.items
+    case .favorites:
+      store.favoriteItems
+    }
+  }
+
   private var filteredItems: [ClipboardItem] {
-    guard !searchText.isEmpty else { return store.items }
-    return store.items.filter {
+    guard !searchText.isEmpty else { return visibleItems }
+    return visibleItems.filter {
       $0.text.localizedCaseInsensitiveContains(searchText)
     }
   }
@@ -83,6 +118,9 @@ struct ClipboardHistoryView: View {
     .onChange(of: searchText) { _ in
       selectedItemID = filteredItems.first?.id
     }
+    .onChange(of: activeTab) { _ in
+      selectedItemID = filteredItems.first?.id
+    }
     .onChange(of: filteredItems.map(\.id)) { itemIDs in
       if let selectedItemID, itemIDs.contains(selectedItemID) {
         return
@@ -119,7 +157,7 @@ struct ClipboardHistoryView: View {
 
       Spacer()
 
-      Text("\(store.items.count)")
+      Text("\(page == .history ? visibleItems.count : store.items.count)")
         .font(.caption.monospacedDigit())
         .foregroundStyle(.secondary)
 
@@ -137,10 +175,26 @@ struct ClipboardHistoryView: View {
 
   private var historyContent: some View {
     VStack(spacing: 0) {
+      Picker("Clipboard section", selection: $activeTab) {
+        ForEach(ClipboardTab.allCases) { tab in
+          Label(tab.title, systemImage: tab.systemImage)
+            .tag(tab)
+        }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+
+      Divider()
+
       HStack(spacing: 8) {
         Image(systemName: "magnifyingglass")
           .foregroundStyle(.secondary)
-        TextField("Search clipboard history", text: $searchText)
+        TextField(
+          activeTab == .history ? "Search clipboard history" : "Search favorites",
+          text: $searchText
+        )
           .textFieldStyle(.plain)
           .focused($searchIsFocused)
           .onSubmit {
@@ -170,7 +224,8 @@ struct ClipboardHistoryView: View {
             ForEach(filteredItems) { item in
               ClipboardRow(
                 item: item,
-                isSelected: selectedItemID == item.id
+                isSelected: selectedItemID == item.id,
+                isFavorite: store.isFavorite(item)
               ) {
                 copyAndDismiss(item)
               }
@@ -179,9 +234,20 @@ struct ClipboardHistoryView: View {
                 Button("Copy") {
                   copyAndDismiss(item)
                 }
-                Divider()
-                Button("Delete", role: .destructive) {
-                  store.delete(item)
+                if activeTab == .favorites {
+                  Button("Remove from Favorites") {
+                    store.removeFavorite(item)
+                  }
+                } else {
+                  Button(store.isFavorite(item) ? "Remove from Favorites" : "Add to Favorites") {
+                    store.toggleFavorite(item)
+                  }
+                }
+                if activeTab == .history {
+                  Divider()
+                  Button("Delete", role: .destructive) {
+                    store.delete(item)
+                  }
                 }
               }
             }
@@ -203,20 +269,34 @@ struct ClipboardHistoryView: View {
   private var emptyState: some View {
     VStack(spacing: 10) {
       Spacer()
-      Image(systemName: searchText.isEmpty ? "clipboard" : "magnifyingglass")
+      Image(systemName: emptyStateSystemImage)
         .font(.system(size: 34))
         .foregroundStyle(.tertiary)
-      Text(searchText.isEmpty ? "Copy some text to get started" : "No matching clips")
+      Text(emptyStateTitle)
         .font(.headline)
-      Text(
-        searchText.isEmpty
-          ? "Text you copy will appear here automatically." : "Try a different search term."
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      Text(emptyStateMessage)
+        .font(.caption)
+        .foregroundStyle(.secondary)
       Spacer()
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var emptyStateSystemImage: String {
+    if !searchText.isEmpty { return "magnifyingglass" }
+    return activeTab == .history ? "clipboard" : "star"
+  }
+
+  private var emptyStateTitle: String {
+    if !searchText.isEmpty { return "No matching clips" }
+    return activeTab == .history ? "Copy some text to get started" : "No favorites yet"
+  }
+
+  private var emptyStateMessage: String {
+    if !searchText.isEmpty { return "Try a different search term." }
+    return activeTab == .history
+      ? "Text you copy will appear here automatically."
+      : "Right-click a clipboard item and add it to Favorites."
   }
 
   private var footer: some View {
@@ -285,6 +365,12 @@ struct ClipboardHistoryView: View {
     case kVK_DownArrow:
       moveSelection(.next)
       return !filteredItems.isEmpty
+    case kVK_LeftArrow:
+      activeTab = .history
+      return true
+    case kVK_RightArrow:
+      activeTab = .favorites
+      return true
     case kVK_Return, kVK_ANSI_KeypadEnter:
       guard !filteredItems.isEmpty else { return false }
       submitSelectedCandidate()
@@ -302,6 +388,12 @@ struct ClipboardHistoryView: View {
     case .next:
       guard page == .history else { return }
       moveSelection(.next)
+    case .previousTab:
+      guard page == .history else { return }
+      activeTab = .history
+    case .nextTab:
+      guard page == .history else { return }
+      activeTab = .favorites
     case .submit:
       guard page == .history, !filteredItems.isEmpty else { return }
       submitSelectedCandidate()
@@ -309,6 +401,7 @@ struct ClipboardHistoryView: View {
       dismiss()
     case .panelWillOpen:
       page = .history
+      activeTab = .history
       searchText = ""
       selectedItemID = store.items.first?.id
       searchIsFocused = false
@@ -321,6 +414,7 @@ struct ClipboardHistoryView: View {
 private struct ClipboardRow: View {
   let item: ClipboardItem
   let isSelected: Bool
+  let isFavorite: Bool
   let copy: () -> Void
 
   var body: some View {
@@ -341,6 +435,13 @@ private struct ClipboardRow: View {
           }
           .font(.caption2)
           .foregroundStyle(.tertiary)
+        }
+
+        if isFavorite {
+          Image(systemName: "star.fill")
+            .font(.caption)
+            .foregroundStyle(.yellow)
+            .help("Favorite")
         }
       }
       .contentShape(Rectangle())

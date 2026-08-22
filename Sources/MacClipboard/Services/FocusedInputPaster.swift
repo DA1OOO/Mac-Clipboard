@@ -10,7 +10,6 @@ final class FocusedInputPaster: ObservableObject {
   struct TargetApplication {
     let processIdentifier: pid_t
     let activate: @MainActor () -> Bool
-    let focusedInputIsEditable: @MainActor () -> Bool
   }
 
   struct Dependencies {
@@ -44,11 +43,6 @@ final class FocusedInputPaster: ObservableObject {
 
             return application.activate(
               options: [.activateAllWindows]
-            )
-          },
-          focusedInputIsEditable: {
-            FocusedInputPaster.focusedInputIsEditable(
-              processIdentifier: application.processIdentifier
             )
           }
         )
@@ -112,10 +106,12 @@ final class FocusedInputPaster: ObservableObject {
     if dependencies.frontmostProcessIdentifier() != application.processIdentifier {
       guard application.activate() else { return }
     }
-    pasteWhenTargetIsReady(
-      application: application,
-      attemptsRemaining: 8
-    )
+    dependencies.scheduleRetry { [weak self] in
+      self?.pasteWhenTargetIsReady(
+        application: application,
+        attemptsRemaining: 20
+      )
+    }
   }
 
   func requestPermission() {
@@ -136,7 +132,6 @@ final class FocusedInputPaster: ObservableObject {
 
     let targetIsReady =
       dependencies.frontmostProcessIdentifier() == application.processIdentifier
-      && application.focusedInputIsEditable()
     if targetIsReady {
       dependencies.postPasteShortcut(application.processIdentifier)
       return
@@ -151,75 +146,7 @@ final class FocusedInputPaster: ObservableObject {
     }
   }
 
-  private static func focusedInputIsEditable(processIdentifier: pid_t) -> Bool {
-    let applicationElement = AXUIElementCreateApplication(processIdentifier)
-    var focusedValue: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(
-        applicationElement,
-        kAXFocusedUIElementAttribute as CFString,
-        &focusedValue
-      ) == .success,
-      let focusedValue,
-      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
-    else {
-      return false
-    }
-
-    let focusedElement = (focusedValue as! AXUIElement)
-    return elementIsEditable(focusedElement)
-  }
-
-  private static func elementIsEditable(_ element: AXUIElement) -> Bool {
-    var selectedTextRange: CFTypeRef?
-    if AXUIElementCopyAttributeValue(
-      element,
-      kAXSelectedTextRangeAttribute as CFString,
-      &selectedTextRange
-    ) == .success {
-      return true
-    }
-
-    var selectionRangeIsSettable = DarwinBoolean(false)
-    if AXUIElementIsAttributeSettable(
-      element,
-      kAXSelectedTextRangeAttribute as CFString,
-      &selectionRangeIsSettable
-    ) == .success,
-      selectionRangeIsSettable.boolValue
-    {
-      return true
-    }
-
-    var roleValue: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(
-        element,
-        kAXRoleAttribute as CFString,
-        &roleValue
-      ) == .success,
-      let roleValue,
-      CFGetTypeID(roleValue) == CFStringGetTypeID()
-    else {
-      return false
-    }
-
-    let role = roleValue as! String
-    let isTextRole =
-      role == kAXTextFieldRole
-      || role == kAXTextAreaRole
-      || role == kAXComboBoxRole
-    guard isTextRole else { return false }
-
-    var valueIsSettable = DarwinBoolean(false)
-    return AXUIElementIsAttributeSettable(
-      element,
-      kAXValueAttribute as CFString,
-      &valueIsSettable
-    ) == .success && valueIsSettable.boolValue
-  }
-
-  private static func postPasteShortcut(to processIdentifier: pid_t) {
+  private static func postPasteShortcut(to _: pid_t) {
     guard let source = CGEventSource(stateID: .hidSystemState),
       let keyDown = CGEvent(
         keyboardEventSource: source,
@@ -237,7 +164,7 @@ final class FocusedInputPaster: ObservableObject {
 
     keyDown.flags = .maskCommand
     keyUp.flags = .maskCommand
-    keyDown.postToPid(processIdentifier)
-    keyUp.postToPid(processIdentifier)
+    keyDown.post(tap: .cghidEventTap)
+    keyUp.post(tap: .cghidEventTap)
   }
 }

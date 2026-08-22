@@ -14,20 +14,36 @@ struct HistoryPersistence {
   }
 
   func load() -> [ClipboardItem] {
-    guard let data = try? Data(contentsOf: historyURL) else { return [] }
-    return (try? JSONDecoder().decode([ClipboardItem].self, from: data)) ?? []
+    load(from: historyURL)
+  }
+
+  func loadFavorites() -> [ClipboardItem] {
+    load(from: favoritesURL)
   }
 
   func save(_ items: [ClipboardItem]) {
+    save(items, to: historyURL, label: "history")
+  }
+
+  func saveFavorites(_ items: [ClipboardItem]) {
+    save(items, to: favoritesURL, label: "favorites")
+  }
+
+  private func load(from url: URL) -> [ClipboardItem] {
+    guard let data = try? Data(contentsOf: url) else { return [] }
+    return (try? JSONDecoder().decode([ClipboardItem].self, from: data)) ?? []
+  }
+
+  private func save(_ items: [ClipboardItem], to url: URL, label: String) {
     do {
       try fileManager.createDirectory(
-        at: historyURL.deletingLastPathComponent(),
+        at: url.deletingLastPathComponent(),
         withIntermediateDirectories: true
       )
       let data = try JSONEncoder().encode(items)
-      try data.write(to: historyURL, options: .atomic)
+      try data.write(to: url, options: .atomic)
     } catch {
-      NSLog("MacClipboard could not save history: %@", error.localizedDescription)
+      NSLog("MacClipboard could not save %@: %@", label, error.localizedDescription)
     }
   }
 
@@ -55,5 +71,11 @@ struct HistoryPersistence {
       applicationSupport
       .appendingPathComponent("MacClipboard", isDirectory: true)
       .appendingPathComponent("history.json", isDirectory: false)
+  }
+
+  var favoritesURL: URL {
+    historyURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("favorites.json", isDirectory: false)
   }
 }

@@ -6,6 +6,7 @@ import MacClipboardCore
 @MainActor
 final class ClipboardStore: ObservableObject {
   @Published private(set) var items: [ClipboardItem]
+  @Published private(set) var favoriteItems: [ClipboardItem]
   @Published private(set) var isMonitoring = false
 
   private let pasteboard: NSPasteboard
@@ -26,6 +27,7 @@ final class ClipboardStore: ObservableObject {
     self.pasteboard = pasteboard
     self.persistence = persistence
     self.items = persistence.load()
+    self.favoriteItems = persistence.loadFavorites()
     self.lastChangeCount = pasteboard.changeCount
     enforceCurrentLimit()
   }
@@ -72,6 +74,20 @@ final class ClipboardStore: ObservableObject {
   func delete(_ item: ClipboardItem) {
     items.removeAll { $0.id == item.id }
     persistence.save(items)
+  }
+
+  func isFavorite(_ item: ClipboardItem) -> Bool {
+    ClipboardFavoritesRules.contains(item, in: favoriteItems)
+  }
+
+  func toggleFavorite(_ item: ClipboardItem) {
+    favoriteItems = ClipboardFavoritesRules.toggling(item, in: favoriteItems)
+    persistence.saveFavorites(favoriteItems)
+  }
+
+  func removeFavorite(_ item: ClipboardItem) {
+    favoriteItems = ClipboardFavoritesRules.removing(item, from: favoriteItems)
+    persistence.saveFavorites(favoriteItems)
   }
 
   func clearHistory() {

@@ -69,6 +69,33 @@ public enum ClipboardHistoryRules {
   }
 }
 
+public enum ClipboardFavoritesRules {
+  public static func contains(_ item: ClipboardItem, in favorites: [ClipboardItem]) -> Bool {
+    favorites.contains { $0.text == item.text }
+  }
+
+  public static func toggling(
+    _ item: ClipboardItem,
+    favoritedAt: Date = Date(),
+    in favorites: [ClipboardItem]
+  ) -> [ClipboardItem] {
+    if contains(item, in: favorites) {
+      return removing(item, from: favorites)
+    }
+
+    var favorite = item
+    favorite.capturedAt = favoritedAt
+    return [favorite] + favorites
+  }
+
+  public static func removing(
+    _ item: ClipboardItem,
+    from favorites: [ClipboardItem]
+  ) -> [ClipboardItem] {
+    favorites.filter { $0.text != item.text }
+  }
+}
+
 public enum ClipboardSelectionDirection {
   case previous
   case next

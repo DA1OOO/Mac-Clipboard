@@ -146,8 +146,50 @@ enum MacClipboardSelfTests {
       failures: &failures
     )
 
+    let favoriteDate = Date(timeIntervalSince1970: 123)
+    let favoriteCandidate = ClipboardItem(text: "favorite")
+    let favorites = ClipboardFavoritesRules.toggling(
+      favoriteCandidate,
+      favoritedAt: favoriteDate,
+      in: []
+    )
+    expect(
+      favorites.first?.id == favoriteCandidate.id
+        && favorites.first?.capturedAt == favoriteDate,
+      "favoriting should preserve identity and record when it was favorited",
+      failures: &failures
+    )
+
+    let sameFavoriteText = ClipboardItem(text: "favorite")
+    expect(
+      ClipboardFavoritesRules.contains(sameFavoriteText, in: favorites),
+      "favorites should match equivalent clipboard text",
+      failures: &failures
+    )
+
+    let toggledOff = ClipboardFavoritesRules.toggling(
+      sameFavoriteText,
+      in: favorites
+    )
+    expect(
+      toggledOff.isEmpty,
+      "favoriting an existing value again should remove it",
+      failures: &failures
+    )
+
+    let retainedFavorite = ClipboardItem(text: "retained favorite")
+    let removalResult = ClipboardFavoritesRules.removing(
+      favoriteCandidate,
+      from: [favoriteCandidate, retainedFavorite]
+    )
+    expect(
+      removalResult == [retainedFavorite],
+      "removing a favorite should retain unrelated favorites",
+      failures: &failures
+    )
+
     if failures.isEmpty {
-      print("MacClipboard self-tests passed (11 checks).")
+      print("MacClipboard self-tests passed (15 checks).")
     } else {
       for failure in failures {
         fputs("FAILED: \(failure)\n", stderr)
