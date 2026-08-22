@@ -101,8 +101,53 @@ enum MacClipboardSelfTests {
       failures: &failures
     )
 
+    let sourceApplication = ClipboardSourceApplication(
+      bundleIdentifier: "com.example.source",
+      displayName: "Source App"
+    )
+    let attributed = ClipboardHistoryRules.inserting(
+      text: "attributed",
+      sourceApplication: sourceApplication,
+      into: [],
+      limit: 10
+    )
+    expect(
+      attributed.first?.sourceApplication == sourceApplication,
+      "new entries should retain their source application",
+      failures: &failures
+    )
+
+    let updatedSourceApplication = ClipboardSourceApplication(
+      bundleIdentifier: "com.example.updated-source",
+      displayName: "Updated Source App"
+    )
+    let updatedAttribution = ClipboardHistoryRules.inserting(
+      text: "attributed",
+      sourceApplication: updatedSourceApplication,
+      into: attributed,
+      limit: 10
+    )
+    expect(
+      updatedAttribution.first?.sourceApplication == updatedSourceApplication,
+      "duplicates should use the latest source application",
+      failures: &failures
+    )
+
+    let legacyJSON = """
+      [{"id":"00000000-0000-0000-0000-000000000001","text":"legacy","capturedAt":0}]
+      """
+    let legacyItems = try? JSONDecoder().decode(
+      [ClipboardItem].self,
+      from: Data(legacyJSON.utf8)
+    )
+    expect(
+      legacyItems?.first?.sourceApplication == nil,
+      "history saved before source attribution should remain readable",
+      failures: &failures
+    )
+
     if failures.isEmpty {
-      print("MacClipboard self-tests passed (8 checks).")
+      print("MacClipboard self-tests passed (11 checks).")
     } else {
       for failure in failures {
         fputs("FAILED: \(failure)\n", stderr)

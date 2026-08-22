@@ -66,7 +66,7 @@ final class ClipboardStore: ObservableObject {
     pasteboard.clearContents()
     pasteboard.setString(item.text, forType: .string)
     lastChangeCount = pasteboard.changeCount
-    record(item.text)
+    record(item.text, sourceApplication: item.sourceApplication)
   }
 
   func delete(_ item: ClipboardItem) {
@@ -87,22 +87,44 @@ final class ClipboardStore: ObservableObject {
 
   private func pollPasteboard() {
     guard isMonitoring, pasteboard.changeCount != lastChangeCount else { return }
-    captureCurrentClipboard()
+    captureCurrentClipboard(sourceApplication: frontmostSourceApplication())
   }
 
-  private func captureCurrentClipboard() {
+  private func captureCurrentClipboard(
+    sourceApplication: ClipboardSourceApplication? = nil
+  ) {
     lastChangeCount = pasteboard.changeCount
     guard let text = pasteboard.string(forType: .string) else { return }
-    record(String(text.prefix(Self.maximumTextLength)))
+    record(
+      String(text.prefix(Self.maximumTextLength)),
+      sourceApplication: sourceApplication
+    )
   }
 
-  private func record(_ text: String) {
+  private func record(
+    _ text: String,
+    sourceApplication: ClipboardSourceApplication?
+  ) {
     items = ClipboardHistoryRules.inserting(
       text: text,
+      sourceApplication: sourceApplication,
       into: items,
       limit: historyLimit
     )
     persistence.save(items)
+  }
+
+  private func frontmostSourceApplication() -> ClipboardSourceApplication? {
+    guard let application = NSWorkspace.shared.frontmostApplication else { return nil }
+    let bundleIdentifier = application.bundleIdentifier
+    guard bundleIdentifier != Bundle.main.bundleIdentifier else { return nil }
+
+    let displayName = application.localizedName ?? bundleIdentifier
+    guard let displayName, !displayName.isEmpty else { return nil }
+    return ClipboardSourceApplication(
+      bundleIdentifier: bundleIdentifier,
+      displayName: displayName
+    )
   }
 
   private func enforceCurrentLimit() {

@@ -64,7 +64,8 @@ struct ClipboardHistoryView: View {
       Divider()
       footer
     }
-    .frame(width: 440, height: 520)
+    .frame(width: 440)
+    .frame(maxHeight: .infinity)
     .background(.regularMaterial)
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     .onAppear {
@@ -307,6 +308,9 @@ struct ClipboardHistoryView: View {
     case .dismiss:
       dismiss()
     case .panelWillOpen:
+      page = .history
+      searchText = ""
+      selectedItemID = store.items.first?.id
       searchIsFocused = false
     case .panelWillClose:
       searchIsFocused = false
@@ -322,17 +326,21 @@ private struct ClipboardRow: View {
   var body: some View {
     Button(action: copy) {
       HStack(alignment: .top, spacing: 10) {
-        Image(systemName: "text.alignleft")
-          .foregroundStyle(.secondary)
-          .frame(width: 18)
+        sourceApplicationIcon
 
         VStack(alignment: .leading, spacing: 4) {
           Text(item.singleLinePreview)
             .lineLimit(2)
             .frame(maxWidth: .infinity, alignment: .leading)
-          Text(item.capturedAt, style: .relative)
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+          HStack(spacing: 4) {
+            if let sourceApplication = item.sourceApplication {
+              Text(sourceApplication.displayName)
+              Text("·")
+            }
+            Text(item.capturedAt, style: .relative)
+          }
+          .font(.caption2)
+          .foregroundStyle(.tertiary)
         }
       }
       .contentShape(Rectangle())
@@ -345,5 +353,23 @@ private struct ClipboardRow: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("Copy \(item.singleLinePreview)")
+  }
+
+  @ViewBuilder
+  private var sourceApplicationIcon: some View {
+    if let sourceApplication = item.sourceApplication,
+      let icon = ApplicationIconProvider.shared.icon(for: sourceApplication)
+    {
+      Image(nsImage: icon)
+        .resizable()
+        .scaledToFit()
+        .frame(width: 22, height: 22)
+        .help("Copied from \(sourceApplication.displayName)")
+    } else {
+      Image(systemName: "app.dashed")
+        .foregroundStyle(.secondary)
+        .frame(width: 22, height: 22)
+        .help("Source application unavailable")
+    }
   }
 }

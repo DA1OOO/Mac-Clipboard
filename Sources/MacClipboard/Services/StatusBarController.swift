@@ -85,7 +85,15 @@ final class StatusBarController: NSObject, NSWindowDelegate {
     let buttonFrame = statusWindow.convertToScreen(
       button.convert(button.bounds, to: nil)
     )
-    panel.setFrameOrigin(panelOrigin(below: buttonFrame, on: statusWindow.screen))
+    let screen = statusWindow.screen ?? NSScreen.main
+    resizePanelToFillHeight(on: screen)
+    let origin: NSPoint
+    if isVisibleStatusButtonFrame(buttonFrame, on: screen) {
+      origin = panelOrigin(below: buttonFrame, on: screen)
+    } else {
+      origin = panelOriginAtTopTrailing(on: screen)
+    }
+    panel.setFrameOrigin(origin)
     panel.makeFirstResponder(nil)
     panel.orderFrontRegardless()
     updatePanelCommandHotKeys()
@@ -148,6 +156,36 @@ final class StatusBarController: NSObject, NSWindowDelegate {
     let x = min(max(desiredX, minimumX), maximumX)
     let y = buttonFrame.minY - panel.frame.height - 6
     return NSPoint(x: x, y: max(y, visibleFrame.minY + margin))
+  }
+
+  private func resizePanelToFillHeight(on screen: NSScreen?) {
+    let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+    let margin: CGFloat = 8
+    panel.setContentSize(
+      NSSize(
+        width: panel.frame.width,
+        height: max(320, visibleFrame.height - margin * 2)
+      )
+    )
+  }
+
+  private func isVisibleStatusButtonFrame(_ buttonFrame: NSRect, on screen: NSScreen?) -> Bool {
+    guard let screen, buttonFrame.width > 0, buttonFrame.height > 0 else { return false }
+    let screenFrame = screen.frame
+    let isHorizontallyVisible = buttonFrame.midX >= screenFrame.minX
+      && buttonFrame.midX <= screenFrame.maxX
+    let isInMenuBar = buttonFrame.maxY >= screenFrame.maxY - 64
+      && buttonFrame.minY <= screenFrame.maxY
+    return isHorizontallyVisible && isInMenuBar
+  }
+
+  private func panelOriginAtTopTrailing(on screen: NSScreen?) -> NSPoint {
+    let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+    let margin: CGFloat = 8
+    return NSPoint(
+      x: visibleFrame.maxX - panel.frame.width - margin,
+      y: visibleFrame.maxY - panel.frame.height - margin
+    )
   }
 
   func windowDidResignKey(_ notification: Notification) {
