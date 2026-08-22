@@ -8,6 +8,8 @@
     <string>MacClipboard</string>
     <key>CFBundleIdentifier</key>
     <string>com.da1ooo.MacClipboard</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -15,6 +15,7 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 install -m 755 "$BIN_DIR/MacClipboard" "$APP_DIR/Contents/MacOS/MacClipboard"
 install -m 644 "$ROOT_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
+install -m 644 "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$APP_DIR"
 
 echo "Built $APP_DIR"

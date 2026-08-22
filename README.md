@@ -1,5 +1,9 @@
 # Mac Clipboard
 
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="MacClipboard 应用图标" width="180">
+</p>
+
 一个轻量、私密、在本机运行的 macOS 菜单栏剪贴板历史工具。
 
 它会记录你复制过的纯文本，通过菜单栏或全局快捷键快速搜索并再次复制。当前版本没有账号、云同步、遥测或网络请求。
