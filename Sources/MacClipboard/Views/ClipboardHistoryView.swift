@@ -15,6 +15,7 @@ struct ClipboardHistoryView: View {
   @State private var page: Page = .history
   @State private var activeTab: ClipboardTab = .history
   @State private var selectedItemID: UUID?
+  @State private var showingClearConfirmation = false
   @FocusState private var searchIsFocused: Bool
 
   init(
@@ -135,6 +136,17 @@ struct ClipboardHistoryView: View {
     .onReceive(panelCommandRouter.commands) { command in
       handlePanelCommand(command)
     }
+    .confirmationDialog(
+      "Clear all clipboard history?",
+      isPresented: $showingClearConfirmation
+    ) {
+      Button("Clear History", role: .destructive) {
+        store.clearHistory()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Favorites will be kept. This cannot be undone.")
+    }
   }
 
   private var header: some View {
@@ -160,6 +172,18 @@ struct ClipboardHistoryView: View {
       Text("\(page == .history ? visibleItems.count : store.items.count)")
         .font(.caption.monospacedDigit())
         .foregroundStyle(.secondary)
+
+      if page == .history, activeTab == .history {
+        Button {
+          showingClearConfirmation = true
+        } label: {
+          Image(systemName: "trash")
+        }
+        .buttonStyle(.plain)
+        .disabled(store.items.isEmpty)
+        .help("Clear clipboard history")
+        .accessibilityLabel("Clear clipboard history")
+      }
 
       Button {
         page = page == .history ? .settings : .history
