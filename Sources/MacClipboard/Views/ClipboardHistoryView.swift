@@ -447,8 +447,9 @@ private struct ClipboardRow: View {
         sourceApplicationIcon
 
         VStack(alignment: .leading, spacing: 4) {
-          Text(item.singleLinePreview)
-            .lineLimit(2)
+          Text(isSelected ? item.text : item.singleLinePreview)
+            .lineLimit(isSelected ? 30 : 2)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
           HStack(spacing: 4) {
             if let sourceApplication = item.sourceApplication {
