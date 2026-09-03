@@ -245,11 +245,12 @@ struct ClipboardHistoryView: View {
       } else {
         ScrollViewReader { proxy in
           List {
-            ForEach(filteredItems) { item in
+            ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
               ClipboardRow(
                 item: item,
                 isSelected: selectedItemID == item.id,
-                isFavorite: store.isFavorite(item)
+                isFavorite: store.isFavorite(item),
+                shortcutKey: candidateShortcutKey(at: index)
               ) {
                 copyAndDismiss(item)
               }
@@ -376,9 +377,27 @@ struct ClipboardHistoryView: View {
     }
   }
 
+  private func submitCandidate(at index: Int) {
+    guard filteredItems.indices.contains(index) else { return }
+    let item = filteredItems[index]
+    selectedItemID = item.id
+    store.copy(item)
+    dismiss()
+    focusedInputPaster.pasteIntoRememberedInput()
+  }
+
   private func handleHistoryKeyEvent(_ event: NSEvent) -> Bool {
     let navigationModifiers: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
-    guard event.modifierFlags.intersection(navigationModifiers).isEmpty else {
+    let modifiers = event.modifierFlags.intersection(navigationModifiers)
+    if modifiers == globalHotKey.candidateShortcutModifier.eventModifierFlag,
+      let index = candidateIndex(for: Int(event.keyCode))
+    {
+      guard filteredItems.indices.contains(index) else { return false }
+      submitCandidate(at: index)
+      return true
+    }
+
+    guard modifiers.isEmpty else {
       return false
     }
 
@@ -404,6 +423,28 @@ struct ClipboardHistoryView: View {
     }
   }
 
+  private func candidateIndex(for keyCode: Int) -> Int? {
+    switch keyCode {
+    case kVK_ANSI_0: 9
+    case kVK_ANSI_1: 0
+    case kVK_ANSI_2: 1
+    case kVK_ANSI_3: 2
+    case kVK_ANSI_4: 3
+    case kVK_ANSI_5: 4
+    case kVK_ANSI_6: 5
+    case kVK_ANSI_7: 6
+    case kVK_ANSI_8: 7
+    case kVK_ANSI_9: 8
+    default: nil
+    }
+  }
+
+  private func candidateShortcutKey(at index: Int) -> String? {
+    guard (0..<10).contains(index) else { return nil }
+    let numberKey = index == 9 ? "0" : String(index + 1)
+    return globalHotKey.candidateShortcutModifier.symbol + numberKey
+  }
+
   private func handlePanelCommand(_ command: PanelCommand) {
     switch command {
     case .previous:
@@ -418,6 +459,9 @@ struct ClipboardHistoryView: View {
     case .nextTab:
       guard page == .history else { return }
       activeTab = .favorites
+    case .selectCandidate(let index):
+      guard page == .history else { return }
+      submitCandidate(at: index)
     case .submit:
       guard page == .history, !filteredItems.isEmpty else { return }
       submitSelectedCandidate()
@@ -439,6 +483,7 @@ private struct ClipboardRow: View {
   let item: ClipboardItem
   let isSelected: Bool
   let isFavorite: Bool
+  let shortcutKey: String?
   let copy: () -> Void
 
   var body: some View {
@@ -467,6 +512,15 @@ private struct ClipboardRow: View {
             .font(.caption)
             .foregroundStyle(.yellow)
             .help("Favorite")
+        }
+
+        if let shortcutKey {
+          Text(shortcutKey)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
         }
       }
       .contentShape(Rectangle())

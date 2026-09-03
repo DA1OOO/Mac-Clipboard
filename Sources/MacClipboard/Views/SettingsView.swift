@@ -71,6 +71,27 @@ struct SettingsView: View {
 
       Section("Shortcut") {
         ShortcutRecorderRow(globalHotKey: globalHotKey)
+
+        Picker(
+          "Select candidates",
+          selection: Binding(
+            get: { globalHotKey.candidateShortcutModifier },
+            set: { globalHotKey.updateCandidateShortcutModifier($0) }
+          )
+        ) {
+          ForEach(GlobalHotKey.CandidateShortcutModifier.allCases) { modifier in
+            Text("\(modifier.symbol)  \(modifier.title)")
+              .tag(modifier)
+          }
+        }
+
+        Text(
+          "Use \(globalHotKey.candidateShortcutModifier.symbol)1–"
+            + "\(globalHotKey.candidateShortcutModifier.symbol)9 and "
+            + "\(globalHotKey.candidateShortcutModifier.symbol)0 to paste the first 10 results."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
       }
     }
     .formStyle(.grouped)

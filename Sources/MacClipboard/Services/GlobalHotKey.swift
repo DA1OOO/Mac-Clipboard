@@ -5,6 +5,51 @@ import Foundation
 
 @MainActor
 final class GlobalHotKey: ObservableObject {
+  enum CandidateShortcutModifier: String, CaseIterable, Identifiable {
+    case command
+    case option
+    case control
+    case shift
+
+    var id: Self { self }
+
+    var symbol: String {
+      switch self {
+      case .command: "⌘"
+      case .option: "⌥"
+      case .control: "⌃"
+      case .shift: "⇧"
+      }
+    }
+
+    var title: String {
+      switch self {
+      case .command: "Command"
+      case .option: "Option"
+      case .control: "Control"
+      case .shift: "Shift"
+      }
+    }
+
+    var carbonModifier: UInt32 {
+      switch self {
+      case .command: UInt32(cmdKey)
+      case .option: UInt32(optionKey)
+      case .control: UInt32(controlKey)
+      case .shift: UInt32(shiftKey)
+      }
+    }
+
+    var eventModifierFlag: NSEvent.ModifierFlags {
+      switch self {
+      case .command: .command
+      case .option: .option
+      case .control: .control
+      case .shift: .shift
+      }
+    }
+  }
+
   struct Shortcut: Codable, Equatable {
     let keyCode: UInt32
     let modifiers: UInt32
@@ -130,10 +175,12 @@ final class GlobalHotKey: ObservableObject {
   }
 
   @Published private(set) var shortcut: Shortcut
+  @Published private(set) var candidateShortcutModifier: CandidateShortcutModifier
   @Published private(set) var registrationError: String?
 
   private enum DefaultsKey {
     static let shortcut = "globalHotKeyShortcut"
+    static let candidateShortcutModifier = "candidateShortcutModifier"
   }
 
   private static let hotKeySignature = fourCharacterCode("MCBH")
@@ -147,6 +194,16 @@ final class GlobalHotKey: ObservableObject {
     case dismiss = 5
     case previousTab = 6
     case nextTab = 7
+    case selectCandidate1 = 8
+    case selectCandidate2 = 9
+    case selectCandidate3 = 10
+    case selectCandidate4 = 11
+    case selectCandidate5 = 12
+    case selectCandidate6 = 13
+    case selectCandidate7 = 14
+    case selectCandidate8 = 15
+    case selectCandidate9 = 16
+    case selectCandidate10 = 17
 
     var keyCode: UInt32 {
       switch self {
@@ -164,6 +221,38 @@ final class GlobalHotKey: ObservableObject {
         UInt32(kVK_ANSI_KeypadEnter)
       case .dismiss:
         UInt32(kVK_Escape)
+      case .selectCandidate1:
+        UInt32(kVK_ANSI_1)
+      case .selectCandidate2:
+        UInt32(kVK_ANSI_2)
+      case .selectCandidate3:
+        UInt32(kVK_ANSI_3)
+      case .selectCandidate4:
+        UInt32(kVK_ANSI_4)
+      case .selectCandidate5:
+        UInt32(kVK_ANSI_5)
+      case .selectCandidate6:
+        UInt32(kVK_ANSI_6)
+      case .selectCandidate7:
+        UInt32(kVK_ANSI_7)
+      case .selectCandidate8:
+        UInt32(kVK_ANSI_8)
+      case .selectCandidate9:
+        UInt32(kVK_ANSI_9)
+      case .selectCandidate10:
+        UInt32(kVK_ANSI_0)
+      }
+    }
+
+    func modifiers(candidateShortcutModifier: CandidateShortcutModifier) -> UInt32 {
+      switch self {
+      case .selectCandidate1, .selectCandidate2, .selectCandidate3,
+        .selectCandidate4, .selectCandidate5, .selectCandidate6,
+        .selectCandidate7, .selectCandidate8, .selectCandidate9,
+        .selectCandidate10:
+        candidateShortcutModifier.carbonModifier
+      default:
+        0
       }
     }
 
@@ -181,6 +270,26 @@ final class GlobalHotKey: ObservableObject {
         .submit
       case .dismiss:
         .dismiss
+      case .selectCandidate1:
+        .selectCandidate(0)
+      case .selectCandidate2:
+        .selectCandidate(1)
+      case .selectCandidate3:
+        .selectCandidate(2)
+      case .selectCandidate4:
+        .selectCandidate(3)
+      case .selectCandidate5:
+        .selectCandidate(4)
+      case .selectCandidate6:
+        .selectCandidate(5)
+      case .selectCandidate7:
+        .selectCandidate(6)
+      case .selectCandidate8:
+        .selectCandidate(7)
+      case .selectCandidate9:
+        .selectCandidate(8)
+      case .selectCandidate10:
+        .selectCandidate(9)
       }
     }
   }
@@ -195,6 +304,7 @@ final class GlobalHotKey: ObservableObject {
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
     self.shortcut = Self.loadShortcut(from: defaults)
+    self.candidateShortcutModifier = Self.loadCandidateShortcutModifier(from: defaults)
   }
 
   deinit {
@@ -235,7 +345,7 @@ final class GlobalHotKey: ObservableObject {
       var reference: EventHotKeyRef?
       let status = RegisterEventHotKey(
         identifier.keyCode,
-        0,
+        identifier.modifiers(candidateShortcutModifier: candidateShortcutModifier),
         EventHotKeyID(signature: Self.panelCommandSignature, id: identifier.rawValue),
         GetApplicationEventTarget(),
         0,
@@ -298,6 +408,12 @@ final class GlobalHotKey: ObservableObject {
 
   func restoreDefault() {
     updateShortcut(.standard)
+  }
+
+  func updateCandidateShortcutModifier(_ modifier: CandidateShortcutModifier) {
+    guard modifier != candidateShortcutModifier else { return }
+    candidateShortcutModifier = modifier
+    defaults.set(modifier.rawValue, forKey: DefaultsKey.candidateShortcutModifier)
   }
 
   private func installHandler() -> OSStatus {
@@ -406,6 +522,17 @@ final class GlobalHotKey: ObservableObject {
       return .standard
     }
     return shortcut
+  }
+
+  private static func loadCandidateShortcutModifier(
+    from defaults: UserDefaults
+  ) -> CandidateShortcutModifier {
+    guard let rawValue = defaults.string(forKey: DefaultsKey.candidateShortcutModifier),
+      let modifier = CandidateShortcutModifier(rawValue: rawValue)
+    else {
+      return .option
+    }
+    return modifier
   }
 
   private static func message(

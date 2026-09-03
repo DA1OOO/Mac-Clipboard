@@ -6,6 +6,7 @@ enum PanelCommand: Equatable {
   case next
   case previousTab
   case nextTab
+  case selectCandidate(Int)
   case submit
   case dismiss
   case panelWillOpen
