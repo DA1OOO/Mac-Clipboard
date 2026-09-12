@@ -300,6 +300,9 @@ final class GlobalHotKey: ObservableObject {
   private var hotKeyRef: EventHotKeyRef?
   private var panelCommandHotKeyRefs: [EventHotKeyRef] = []
   private var eventHandlerRef: EventHandlerRef?
+  private var repeatingPanelCommand: PanelCommand?
+  private var panelCommandRepeatDelayTimer: Timer?
+  private var panelCommandRepeatTimer: Timer?
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
@@ -308,6 +311,8 @@ final class GlobalHotKey: ObservableObject {
   }
 
   deinit {
+    panelCommandRepeatDelayTimer?.invalidate()
+    panelCommandRepeatTimer?.invalidate()
     if let hotKeyRef {
       UnregisterEventHotKey(hotKeyRef)
     }
@@ -361,6 +366,7 @@ final class GlobalHotKey: ObservableObject {
   }
 
   func deactivatePanelCommands() {
+    stopRepeatingPanelCommand()
     unregisterPanelCommandHotKeys()
     panelCommandAction = nil
   }
@@ -417,58 +423,125 @@ final class GlobalHotKey: ObservableObject {
   }
 
   private func installHandler() -> OSStatus {
-    var eventType = EventTypeSpec(
-      eventClass: OSType(kEventClassKeyboard),
-      eventKind: UInt32(kEventHotKeyPressed)
-    )
+    var eventTypes = [
+      EventTypeSpec(
+        eventClass: OSType(kEventClassKeyboard),
+        eventKind: UInt32(kEventHotKeyPressed)
+      ),
+      EventTypeSpec(
+        eventClass: OSType(kEventClassKeyboard),
+        eventKind: UInt32(kEventHotKeyReleased)
+      ),
+    ]
 
     let userData = Unmanaged.passUnretained(self).toOpaque()
-    return InstallEventHandler(
-      GetApplicationEventTarget(),
-      { _, event, userData in
-        guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+    return eventTypes.withUnsafeMutableBufferPointer { eventTypesBuffer in
+      InstallEventHandler(
+        GetApplicationEventTarget(),
+        { _, event, userData in
+          guard let event, let userData else { return OSStatus(eventNotHandledErr) }
 
-        var identifier = EventHotKeyID()
-        let status = GetEventParameter(
-          event,
-          EventParamName(kEventParamDirectObject),
-          EventParamType(typeEventHotKeyID),
-          nil,
-          MemoryLayout<EventHotKeyID>.size,
-          nil,
-          &identifier
-        )
-        let hotKey = Unmanaged<GlobalHotKey>
-          .fromOpaque(userData)
-          .takeUnretainedValue()
+          var identifier = EventHotKeyID()
+          let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &identifier
+          )
+          let hotKey = Unmanaged<GlobalHotKey>
+            .fromOpaque(userData)
+            .takeUnretainedValue()
+          let eventKind = GetEventKind(event)
 
-        if status == noErr,
-          identifier.signature == GlobalHotKey.hotKeySignature,
-          identifier.id == 1
-        {
-          DispatchQueue.main.async {
-            hotKey.action?()
+          if status == noErr,
+            identifier.signature == GlobalHotKey.hotKeySignature,
+            identifier.id == 1
+          {
+            if eventKind == UInt32(kEventHotKeyPressed) {
+              DispatchQueue.main.async {
+                hotKey.action?()
+              }
+            }
+            return noErr
           }
-          return noErr
-        }
 
-        if status == noErr,
-          identifier.signature == GlobalHotKey.panelCommandSignature,
-          let command = PanelCommandIdentifier(rawValue: identifier.id)?.command
-        {
-          DispatchQueue.main.async {
-            hotKey.dispatchPanelCommand(command)
+          if status == noErr,
+            identifier.signature == GlobalHotKey.panelCommandSignature,
+            let command = PanelCommandIdentifier(rawValue: identifier.id)?.command
+          {
+            DispatchQueue.main.async {
+              hotKey.handlePanelCommandEvent(command, eventKind: eventKind)
+            }
+            return noErr
           }
-          return noErr
-        }
 
-        return OSStatus(eventNotHandledErr)
-      },
-      1,
-      &eventType,
-      userData,
-      &eventHandlerRef
+          return OSStatus(eventNotHandledErr)
+        },
+        eventTypesBuffer.count,
+        eventTypesBuffer.baseAddress,
+        userData,
+        &eventHandlerRef
+      )
+    }
+  }
+
+  private func handlePanelCommandEvent(_ command: PanelCommand, eventKind: UInt32) {
+    if eventKind == UInt32(kEventHotKeyReleased) {
+      if repeatingPanelCommand == command {
+        stopRepeatingPanelCommand()
+      }
+      return
+    }
+
+    guard eventKind == UInt32(kEventHotKeyPressed) else { return }
+    guard command == .previous || command == .next else {
+      dispatchPanelCommand(command)
+      return
+    }
+
+    guard repeatingPanelCommand != command else { return }
+    stopRepeatingPanelCommand()
+    repeatingPanelCommand = command
+    dispatchPanelCommand(command)
+    panelCommandRepeatDelayTimer = Timer.scheduledTimer(
+      timeInterval: 0.32,
+      target: self,
+      selector: #selector(beginPanelCommandRepeat),
+      userInfo: nil,
+      repeats: false
     )
+  }
+
+  @objc private func beginPanelCommandRepeat() {
+    panelCommandRepeatDelayTimer = nil
+    guard repeatingPanelCommand != nil else { return }
+    panelCommandRepeatTimer = Timer.scheduledTimer(
+      timeInterval: 0.07,
+      target: self,
+      selector: #selector(repeatPanelCommand),
+      userInfo: nil,
+      repeats: true
+    )
+    panelCommandRepeatTimer?.fire()
+  }
+
+  @objc private func repeatPanelCommand() {
+    guard let repeatingPanelCommand else {
+      stopRepeatingPanelCommand()
+      return
+    }
+    dispatchPanelCommand(repeatingPanelCommand)
+  }
+
+  private func stopRepeatingPanelCommand() {
+    panelCommandRepeatDelayTimer?.invalidate()
+    panelCommandRepeatDelayTimer = nil
+    panelCommandRepeatTimer?.invalidate()
+    panelCommandRepeatTimer = nil
+    repeatingPanelCommand = nil
   }
 
   private func register(_ shortcut: Shortcut) -> OSStatus {

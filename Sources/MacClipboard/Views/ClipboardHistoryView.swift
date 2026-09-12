@@ -493,7 +493,7 @@ private struct ClipboardRow: View {
 
         VStack(alignment: .leading, spacing: 4) {
           Text(isSelected ? item.text : item.singleLinePreview)
-            .lineLimit(isSelected ? 30 : 2)
+            .lineLimit(isSelected ? 8 : 2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
           HStack(spacing: 4) {
