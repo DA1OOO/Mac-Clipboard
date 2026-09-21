@@ -76,8 +76,8 @@ struct ClipboardHistoryView: View {
 
   private var filteredItems: [ClipboardItem] {
     guard !searchText.isEmpty else { return visibleItems }
-    return visibleItems.filter {
-      $0.text.localizedCaseInsensitiveContains(searchText)
+    return visibleItems.filter { item in
+      !item.hasImage && item.text.localizedCaseInsensitiveContains(searchText)
     }
   }
 
@@ -248,6 +248,7 @@ struct ClipboardHistoryView: View {
             ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
               ClipboardRow(
                 item: item,
+                image: store.image(for: item),
                 isSelected: selectedItemID == item.id,
                 isFavorite: store.isFavorite(item),
                 shortcutKey: candidateShortcutKey(at: index)
@@ -481,6 +482,7 @@ struct ClipboardHistoryView: View {
 
 private struct ClipboardRow: View {
   let item: ClipboardItem
+  let image: NSImage?
   let isSelected: Bool
   let isFavorite: Bool
   let shortcutKey: String?
@@ -489,11 +491,11 @@ private struct ClipboardRow: View {
   var body: some View {
     Button(action: copy) {
       HStack(alignment: .top, spacing: 10) {
-        sourceApplicationIcon
+        leadingVisual
 
         VStack(alignment: .leading, spacing: 4) {
-          Text(isSelected ? item.text : item.singleLinePreview)
-            .lineLimit(isSelected ? 8 : 2)
+          titleText
+            .lineLimit(item.hasImage ? 1 : (isSelected ? 8 : 2))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
           HStack(spacing: 4) {
@@ -505,6 +507,19 @@ private struct ClipboardRow: View {
           }
           .font(.caption2)
           .foregroundStyle(.tertiary)
+
+          if isSelected, item.hasImage, let image {
+            Image(nsImage: image)
+              .resizable()
+              .scaledToFit()
+              .frame(maxWidth: .infinity)
+              .frame(maxHeight: 160)
+              .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+              .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                  .strokeBorder(.quaternary)
+              }
+          }
         }
 
         if isFavorite {
@@ -532,7 +547,46 @@ private struct ClipboardRow: View {
       )
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("Copy \(item.singleLinePreview)")
+    .accessibilityLabel(accessibilityText)
+  }
+
+  @ViewBuilder
+  private var leadingVisual: some View {
+    if item.hasImage {
+      ZStack {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+          .fill(.quaternary)
+        if let image {
+          Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 34, height: 34)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        } else {
+          Image(systemName: "photo")
+            .font(.system(size: 14))
+            .foregroundStyle(.secondary)
+        }
+      }
+      .frame(width: 34, height: 34)
+    } else {
+      sourceApplicationIcon
+    }
+  }
+
+  private var titleText: Text {
+    if item.hasImage {
+      return Text("Image · \(byteCountText)")
+    }
+    return Text(isSelected ? item.text : item.singleLinePreview)
+  }
+
+  private var accessibilityText: String {
+    item.hasImage ? "Copy image (\(byteCountText))" : "Copy \(item.singleLinePreview)"
+  }
+
+  private var byteCountText: String {
+    ByteCountFormatter.string(fromByteCount: Int64(item.imageByteCount ?? 0), countStyle: .file)
   }
 
   @ViewBuilder

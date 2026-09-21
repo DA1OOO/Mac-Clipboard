@@ -96,7 +96,7 @@ open dist/MacClipboard.app
 
 ad-hoc 签名按当前二进制哈希标识应用；代码变化后，已有辅助功能授权会失效。涉及辅助功能的手动验证必须在最后一次构建后重新授权，或使用稳定的开发者签名身份。
 
-本机 Command Line Tools 若默认 SDK 与 Swift 编译器版本不匹配，脚本会优先使用已存在的 `/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk`。其他机器没有该 SDK 时，脚本会使用系统默认 `SDKROOT`。
+`swift-sdk.sh` 会用一段包含 `@State` 的 SwiftUI 探针代码逐个检验 SDK：先试 `xcrun` 返回的默认 SDK，失败时按版本从新到旧尝试本机已安装的其他 MacOSX SDK，选中第一个能通过编译的 SDK。这样可以在 Command Line Tools 默认 SDK 缺少 SwiftUI 宏插件（如 `SwiftUIMacros`，`@State` 宏无法展开）时自动回退到旧 SDK。设置了 `SDKROOT` 环境变量时直接使用该值，不做探测。
 
 完成代码修改后至少运行：
 

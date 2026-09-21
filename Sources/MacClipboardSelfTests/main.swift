@@ -145,6 +145,106 @@ enum MacClipboardSelfTests {
       "history saved before source attribution should remain readable",
       failures: &failures
     )
+    expect(
+      legacyItems?.first?.imageFileName == nil && legacyItems?.first?.hasImage == false,
+      "history saved before image support should remain readable",
+      failures: &failures
+    )
+
+    let imageData = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
+    let fingerprint = ClipboardImageFingerprint.fingerprint(of: imageData)
+    expect(
+      fingerprint == ClipboardImageFingerprint.fingerprint(of: imageData)
+        && fingerprint != ClipboardImageFingerprint.fingerprint(of: imageData + [4]),
+      "image fingerprints should be stable for identical data and differ otherwise",
+      failures: &failures
+    )
+
+    let imageItem = ClipboardItem(
+      text: "",
+      imageFileName: "first.png",
+      imageByteCount: imageData.count,
+      imageFingerprint: fingerprint
+    )
+    let withImage = ClipboardHistoryRules.inserting(
+      item: imageItem,
+      into: [ClipboardItem(text: "text")],
+      limit: 10
+    )
+    expect(
+      withImage.first?.id == imageItem.id && withImage.first?.imageFileName == "first.png",
+      "copied images should be recorded as new leading entries",
+      failures: &failures
+    )
+
+    let duplicateImageItem = ClipboardItem(
+      text: "",
+      imageFileName: "second.png",
+      imageByteCount: imageData.count,
+      imageFingerprint: fingerprint
+    )
+    let deduplicatedImage = ClipboardHistoryRules.inserting(
+      item: duplicateImageItem,
+      into: withImage,
+      limit: 10
+    )
+    expect(
+      deduplicatedImage.first?.id == imageItem.id
+        && deduplicatedImage.first?.imageFileName == "first.png"
+        && deduplicatedImage.count == withImage.count,
+      "identical images should move the original entry to the front without duplicating",
+      failures: &failures
+    )
+
+    let imageLimited = ClipboardHistoryRules.inserting(
+      item: ClipboardItem(
+        text: "",
+        imageFileName: "overflow.png",
+        imageByteCount: imageData.count,
+        imageFingerprint: ClipboardImageFingerprint.fingerprint(of: imageData + [9])
+      ),
+      into: [ClipboardItem(text: "two"), ClipboardItem(text: "one")],
+      limit: 2
+    )
+    expect(
+      imageLimited.count == 2 && imageLimited.first?.hasImage == true,
+      "image entries should respect the history limit",
+      failures: &failures
+    )
+
+    if let encoded = try? JSONEncoder().encode([imageItem]),
+      let decoded = try? JSONDecoder().decode([ClipboardItem].self, from: encoded)
+    {
+      expect(
+        decoded.first?.imageFingerprint == fingerprint
+          && decoded.first?.imageByteCount == imageData.count
+          && decoded.first?.imageFileName == "first.png",
+        "image entries should survive a persistence round trip",
+        failures: &failures
+      )
+    } else {
+      failures.append("image entries should be encodable")
+    }
+
+    let imageFavoriteCandidate = ClipboardItem(
+      text: "",
+      imageFileName: "favorite.png",
+      imageByteCount: imageData.count,
+      imageFingerprint: fingerprint
+    )
+    expect(
+      ClipboardFavoritesRules.contains(imageFavoriteCandidate, in: ClipboardFavoritesRules.toggling(imageFavoriteCandidate, in: [])),
+      "favorites should match equivalent images",
+      failures: &failures
+    )
+    expect(
+      ClipboardFavoritesRules.removing(
+        imageFavoriteCandidate,
+        from: ClipboardFavoritesRules.toggling(imageFavoriteCandidate, in: [])
+      ).isEmpty,
+      "removing an image favorite should match by content",
+      failures: &failures
+    )
 
     let favoriteDate = Date(timeIntervalSince1970: 123)
     let favoriteCandidate = ClipboardItem(text: "favorite")
@@ -189,7 +289,7 @@ enum MacClipboardSelfTests {
     )
 
     if failures.isEmpty {
-      print("MacClipboard self-tests passed (15 checks).")
+      print("MacClipboard self-tests passed (23 checks).")
     } else {
       for failure in failures {
         fputs("FAILED: \(failure)\n", stderr)
